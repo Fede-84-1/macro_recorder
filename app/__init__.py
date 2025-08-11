@@ -1,0 +1,2 @@
+"""Macro Recorder application package."""
+
