@@ -37,11 +37,9 @@ class Recorder:
         self._last_move_ts: int = 0
         # external stop callback
         self._on_stop_requested: Optional[Callable[[], None]] = None
-        # temp stop hotkeys
-        self._temp_stop_handles: List[str] = []
-        # polling thread for stop
-        self._monitor_thread: Optional[threading.Thread] = None
-        self._monitor_stop = threading.Event()
+        # Track button states for proper click detection
+        self._button_states = {}
+        self._last_button_pos = {}
 
     def set_on_stop_requested(self, cb: Optional[Callable[[], None]]) -> None:
         self._on_stop_requested = cb
@@ -59,39 +57,14 @@ class Recorder:
         self._recording = True
         self._last_move = None
         self._last_move_ts = 0
+        self._button_states.clear()
+        self._last_button_pos.clear()
         # keyboard hooks (capture events)
         self._hk_press = keyboard.on_press(self._on_key_press, suppress=False)
         self._hk_release = keyboard.on_release(self._on_key_release, suppress=False)
         # mouse hooks (capture events)
         mouse.hook(self._on_mouse_event)
         self._mouse_hooked = True
-        # temporary hotkeys to force stop (ESC/escape + ctrl+alt+r)
-        try:
-            self._temp_stop_handles.append(keyboard.add_hotkey('esc', self._request_stop))
-        except Exception:
-            pass
-        try:
-            self._temp_stop_handles.append(keyboard.add_hotkey('escape', self._request_stop))
-        except Exception:
-            pass
-        try:
-            self._temp_stop_handles.append(keyboard.add_hotkey('ctrl+alt+r', self._request_stop))
-        except Exception:
-            pass
-        # start polling monitor as additional safety
-        self._monitor_stop.clear()
-        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
-        self._monitor_thread.start()
-
-    def _monitor_loop(self) -> None:
-        while not self._monitor_stop.is_set():
-            try:
-                if keyboard.is_pressed('esc') or keyboard.is_pressed('escape') or (keyboard.is_pressed('ctrl') and keyboard.is_pressed('alt') and keyboard.is_pressed('r')):
-                    self._request_stop()
-                    return
-            except Exception:
-                pass
-            time.sleep(0.05)
 
     def _request_stop(self) -> None:
         if self._on_stop_requested:
@@ -105,11 +78,6 @@ class Recorder:
             return []
         logger.info("Stop recording")
         self._recording = False
-        # stop monitor thread
-        try:
-            self._monitor_stop.set()
-        except Exception:
-            pass
         # unhook
         try:
             if self._hk_press:
@@ -119,12 +87,6 @@ class Recorder:
             if self._mouse_hooked:
                 mouse.unhook(self._on_mouse_event)
                 self._mouse_hooked = False
-            for handle in self._temp_stop_handles:
-                try:
-                    keyboard.remove_hotkey(handle)
-                except Exception:
-                    pass
-            self._temp_stop_handles.clear()
         except Exception:
             pass
         with self._lock:
@@ -145,9 +107,6 @@ class Recorder:
         if not self._recording:
             return
         key_name = (e.name or "").lower()
-        if key_name in ("esc", "escape"):
-            self._request_stop()
-            return
         ev = KeyEvent(type="key", action="press", key=str(key_name), time_delta_ms=self._time_delta())
         with self._lock:
             self._events.append(ev)
@@ -167,28 +126,90 @@ class Recorder:
         try:
             if isinstance(e, mouse.MoveEvent):
                 now_ms = int(time.time() * 1000)
-                if self._last_move and (abs(e.x - self._last_move[0]) <= 2 and abs(e.y - self._last_move[1]) <= 2):
+                # Get position from the event
+                x = int(getattr(e, 'x', 0))
+                y = int(getattr(e, 'y', 0))
+                
+                # Throttle mouse move events
+                if self._last_move and (abs(x - self._last_move[0]) <= 2 and abs(y - self._last_move[1]) <= 2):
                     return
                 if now_ms - self._last_move_ts < 15:
                     return
-                self._last_move = (int(e.x), int(e.y))
+                    
+                self._last_move = (x, y)
                 self._last_move_ts = now_ms
-                ev = MouseEvent(type="mouse", action="move", x=int(e.x), y=int(e.y), time_delta_ms=self._time_delta())
+                ev = MouseEvent(type="mouse", action="move", x=x, y=y, time_delta_ms=self._time_delta())
+                with self._lock:
+                    self._events.append(ev)
+                    
             elif isinstance(e, mouse.ButtonEvent):
                 btn = _normalize_button_name(getattr(e, 'button', 'left'))
                 et = getattr(e, 'event_type', '')
+                
+                # Get current mouse position
+                # ButtonEvent doesn't always have x,y attributes, so we use mouse.get_position()
+                try:
+                    pos = mouse.get_position()
+                    x, y = int(pos[0]), int(pos[1])
+                except Exception:
+                    # Fallback: try to get from event attributes if available
+                    x = int(getattr(e, 'x', 0))
+                    y = int(getattr(e, 'y', 0))
+                    if x == 0 and y == 0:
+                        # If still no position, skip this event
+                        logger.debug("Could not determine mouse position for button event")
+                        return
+                
                 if et == 'down':
-                    ev = MouseEvent(type="mouse", action="press", x=int(e.x), y=int(e.y), button=btn, time_delta_ms=self._time_delta())
+                    # Record button press
+                    self._button_states[btn] = True
+                    self._last_button_pos[btn] = (x, y)
+                    ev = MouseEvent(type="mouse", action="press", x=x, y=y, button=btn, time_delta_ms=self._time_delta())
+                    with self._lock:
+                        self._events.append(ev)
+                    logger.debug(f"Recorded mouse press: {btn} at ({x}, {y})")
+                        
                 elif et == 'up':
-                    ev = MouseEvent(type="mouse", action="release", x=int(e.x), y=int(e.y), button=btn, time_delta_ms=self._time_delta())
-                else:
-                    return
+                    # Record button release
+                    ev = MouseEvent(type="mouse", action="release", x=x, y=y, button=btn, time_delta_ms=self._time_delta())
+                    with self._lock:
+                        self._events.append(ev)
+                    logger.debug(f"Recorded mouse release: {btn} at ({x}, {y})")
+                    
+                    # Check if this completes a click (press and release at same position)
+                    if btn in self._button_states and self._button_states.get(btn):
+                        if btn in self._last_button_pos:
+                            press_x, press_y = self._last_button_pos[btn]
+                            # If press and release are at approximately same position, also record as click
+                            if abs(x - press_x) <= 5 and abs(y - press_y) <= 5:
+                                click_ev = MouseEvent(type="mouse", action="click", x=x, y=y, button=btn, time_delta_ms=0)
+                                with self._lock:
+                                    self._events.append(click_ev)
+                                logger.debug(f"Recorded mouse click: {btn} at ({x}, {y})")
+                    
+                    self._button_states[btn] = False
+                    
+                elif et == 'double':
+                    # Handle double clicks explicitly
+                    # First click
+                    ev1 = MouseEvent(type="mouse", action="click", x=x, y=y, button=btn, time_delta_ms=self._time_delta())
+                    # Second click with small delay
+                    ev2 = MouseEvent(type="mouse", action="click", x=x, y=y, button=btn, time_delta_ms=50)
+                    with self._lock:
+                        self._events.append(ev1)
+                        self._events.append(ev2)
+                    logger.debug(f"Recorded double click: {btn} at ({x}, {y})")
+                        
             elif isinstance(e, mouse.WheelEvent):
-                ev = MouseEvent(type="mouse", action="scroll", x=int(e.x), y=int(e.y), dx=0, dy=int(e.delta), time_delta_ms=self._time_delta())
-            else:
-                return
-            with self._lock:
-                self._events.append(ev)
-        except Exception:
+                # Get position
+                x = int(getattr(e, 'x', 0))
+                y = int(getattr(e, 'y', 0))
+                delta = int(getattr(e, 'delta', 0))
+                
+                ev = MouseEvent(type="mouse", action="scroll", x=x, y=y, dx=0, dy=delta, time_delta_ms=self._time_delta())
+                with self._lock:
+                    self._events.append(ev)
+                    
+        except Exception as exc:
+            logger.debug(f"Error processing mouse event: {exc}")
             return
-

@@ -12,12 +12,14 @@ from .wininput import move_cursor_abs, mouse_down, mouse_up, mouse_click, mouse_
 
 try:
     import pydirectinput  # type: ignore
+    pydirectinput.PAUSE = 0  # Remove default pause between actions
     _HAS_PYDIRECT = True
 except Exception:
     _HAS_PYDIRECT = False
 
 try:
     import pyautogui  # type: ignore
+    pyautogui.PAUSE = 0  # Remove default pause between actions
     _HAS_PYAUTOGUI = True
 except Exception:
     _HAS_PYAUTOGUI = False
@@ -65,15 +67,21 @@ class Player:
         self._pressed_keys.clear()
         preserve_cursor = bool(getattr(macro, "preserve_cursor", False))
         original_pos = get_cursor_pos() if preserve_cursor else None
+        
         try:
             for rep in range(max(1, int(repetitions))):
                 logger.info("Playback repetition {}", rep + 1)
+                
                 for ev in events:
                     if self._stop_flag.is_set():
                         return
-                    if with_pauses and getattr(ev, "time_delta_ms", 0):
+                        
+                    # Apply timing delays if with_pauses is enabled
+                    if with_pauses and getattr(ev, "time_delta_ms", 0) > 0:
                         time.sleep(max(0, ev.time_delta_ms) / 1000.0)
+                        
                     self._play_event(ev, preserve_cursor)
+                    
         finally:
             self._release_stuck_keys()
             if preserve_cursor and original_pos is not None:
@@ -91,91 +99,149 @@ class Player:
             if ev.action == "press":
                 keyboard.press(key)
                 self._pressed_keys.add(key)
+                logger.debug(f"Key pressed: {key}")
             elif ev.action == "release":
                 keyboard.release(key)
                 self._pressed_keys.discard(key)
-        except Exception:
-            pass
+                logger.debug(f"Key released: {key}")
+        except Exception as exc:
+            logger.debug(f"Error playing key event: {exc}")
 
     def _safe_move(self, x: int, y: int, preserve_cursor: bool) -> None:
         if not preserve_cursor:
             move_cursor_abs(x, y)
-            time.sleep(0.02)
+            time.sleep(0.005)  # Very short delay for smoother movement
 
     def _play_mouse(self, ev: MouseEvent, preserve_cursor: bool) -> None:
-        # Stealth click via PostMessage se possibile
-        if preserve_cursor and ev.action in ("press", "release", "click") and _HAS_WINMSG:
+        # Handle click events with priority
+        if ev.action == "click":
             btn = _normalize_button_name(ev.button)
+            logger.debug(f"Playing mouse click: {btn} at ({ev.x}, {ev.y})")
+            
+            # If preserve cursor is enabled and we have PostMessage support
+            if preserve_cursor and _HAS_WINMSG:
+                try:
+                    if post_click_at_screen(ev.x, ev.y, btn):
+                        logger.debug("Click sent via PostMessage")
+                        return
+                except Exception as exc:
+                    logger.debug(f"PostMessage failed: {exc}")
+            
+            # Move to position if not preserving cursor
+            if not preserve_cursor:
+                move_cursor_abs(ev.x, ev.y)
+                time.sleep(0.01)  # Small delay to ensure position is set
+            
+            # Try different methods to perform click
+            success = False
+            
+            # Method 1: Native Windows API (most reliable)
             try:
-                if post_click_at_screen(ev.x, ev.y, btn):
-                    return
-            except Exception:
-                pass
-        try:
-            if ev.action == "move":
-                self._safe_move(ev.x, ev.y, preserve_cursor)
-                return
-            if ev.action in ("press", "release"):
-                btn = _normalize_button_name(ev.button)
-                self._safe_move(ev.x, ev.y, preserve_cursor)
-                if _HAS_PYDIRECT:
-                    if ev.action == "press":
-                        pydirectinput.mouseDown(x=ev.x, y=ev.y, button=btn)
-                    else:
-                        pydirectinput.mouseUp(x=ev.x, y=ev.y, button=btn)
-                    return
+                mouse_click(btn)
+                success = True
+                logger.debug("Click executed via native Windows API")
+            except Exception as exc:
+                logger.debug(f"Native Windows API failed: {exc}")
+            
+            # Method 2: pydirectinput (good for games)
+            if _HAS_PYDIRECT and not success:
+                try:
+                    # Ensure we're at the right position
+                    if not preserve_cursor:
+                        pydirectinput.moveTo(ev.x, ev.y)
+                    pydirectinput.click(button=btn)
+                    success = True
+                    logger.debug("Click executed via pydirectinput")
+                except Exception as exc:
+                    logger.debug(f"pydirectinput failed: {exc}")
+            
+            # Method 3: pyautogui as fallback
+            if _HAS_PYAUTOGUI and not success:
+                try:
+                    pyautogui.click(x=ev.x, y=ev.y, button=btn)
+                    success = True
+                    logger.debug("Click executed via pyautogui")
+                except Exception as exc:
+                    logger.debug(f"pyautogui failed: {exc}")
+            
+            # Method 4: PostMessage as last resort (even when not preserving cursor)
+            if _HAS_WINMSG and not success:
+                try:
+                    post_click_at_screen(ev.x, ev.y, btn)
+                    logger.debug("Click executed via PostMessage (fallback)")
+                except Exception as exc:
+                    logger.debug(f"PostMessage fallback failed: {exc}")
+            
+            return
+        
+        # Handle move events
+        if ev.action == "move":
+            self._safe_move(ev.x, ev.y, preserve_cursor)
+            return
+        
+        # Handle press/release events (for drag operations)
+        if ev.action in ("press", "release"):
+            btn = _normalize_button_name(ev.button)
+            logger.debug(f"Playing mouse {ev.action}: {btn} at ({ev.x}, {ev.y})")
+            
+            # Move to position first
+            self._safe_move(ev.x, ev.y, preserve_cursor)
+            
+            # Try different methods
+            success = False
+            
+            # Method 1: Native Windows API
+            try:
                 if ev.action == "press":
                     mouse_down(btn)
                 else:
                     mouse_up(btn)
-                return
-            if ev.action == "click":
-                btn = _normalize_button_name(ev.button)
-                self._safe_move(ev.x, ev.y, preserve_cursor)
-                if _HAS_PYDIRECT:
-                    pydirectinput.click(x=ev.x, y=ev.y, button=btn)
-                    return
-                mouse_click(btn)
-                return
-            if ev.action == "scroll":
-                mouse_wheel(ev.dy or 0)
-                return
-        except Exception:
-            pass
-        if _HAS_PYAUTOGUI:
-            try:
-                if ev.action == "move":
-                    if not preserve_cursor:
-                        pyautogui.moveTo(ev.x, ev.y, duration=0)
-                    return
-                if ev.action in ("press", "release"):
-                    btn = _normalize_button_name(ev.button)
-                    if not preserve_cursor:
-                        pyautogui.moveTo(ev.x, ev.y, duration=0)
-                        time.sleep(0.02)
+                success = True
+                logger.debug(f"Mouse {ev.action} executed via native Windows API")
+            except Exception as exc:
+                logger.debug(f"Native Windows API failed: {exc}")
+            
+            # Method 2: pydirectinput
+            if _HAS_PYDIRECT and not success:
+                try:
+                    if ev.action == "press":
+                        pydirectinput.mouseDown(x=ev.x, y=ev.y, button=btn)
+                    else:
+                        pydirectinput.mouseUp(x=ev.x, y=ev.y, button=btn)
+                    success = True
+                    logger.debug(f"Mouse {ev.action} executed via pydirectinput")
+                except Exception as exc:
+                    logger.debug(f"pydirectinput failed: {exc}")
+            
+            # Method 3: pyautogui
+            if _HAS_PYAUTOGUI and not success:
+                try:
                     if ev.action == "press":
                         pyautogui.mouseDown(button=btn)
                     else:
                         pyautogui.mouseUp(button=btn)
-                    return
-                if ev.action == "click":
-                    btn = _normalize_button_name(ev.button)
-                    if not preserve_cursor:
-                        pyautogui.moveTo(ev.x, ev.y, duration=0)
-                        time.sleep(0.02)
-                    pyautogui.click(x=ev.x, y=ev.y, button=btn)
-                    return
-                if ev.action == "scroll":
-                    pyautogui.scroll(ev.dy or 0, x=ev.x, y=ev.y)
-                    return
-            except Exception:
-                pass
-        if ev.action in ("press", "release", "click") and _HAS_WINMSG:
-            btn = _normalize_button_name(ev.button)
+                    success = True
+                    logger.debug(f"Mouse {ev.action} executed via pyautogui")
+                except Exception as exc:
+                    logger.debug(f"pyautogui failed: {exc}")
+            
+            return
+        
+        # Handle scroll events
+        if ev.action == "scroll":
+            logger.debug(f"Playing mouse scroll: {ev.dy} at ({ev.x}, {ev.y})")
             try:
-                post_click_at_screen(ev.x, ev.y, btn)
-            except Exception:
-                pass
+                mouse_wheel(ev.dy or 0)
+                logger.debug("Scroll executed via native Windows API")
+            except Exception as exc:
+                logger.debug(f"Native scroll failed: {exc}")
+                if _HAS_PYAUTOGUI:
+                    try:
+                        pyautogui.scroll(ev.dy or 0, x=ev.x, y=ev.y)
+                        logger.debug("Scroll executed via pyautogui")
+                    except Exception as exc2:
+                        logger.debug(f"pyautogui scroll failed: {exc2}")
+            return
 
     def _release_stuck_keys(self) -> None:
         for key in list(self._pressed_keys):
@@ -184,9 +250,9 @@ class Player:
             except Exception:
                 pass
         self._pressed_keys.clear()
+        # Also release common modifier keys
         for mod in ["ctrl", "alt", "shift", "left windows", "right windows", "win", "cmd"]:
             try:
                 keyboard.release(mod)
             except Exception:
                 pass
-

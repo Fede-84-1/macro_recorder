@@ -57,15 +57,24 @@ def save_macros(macros: List[Macro]) -> None:
 
 
 def next_recording_title(existing: List[Macro]) -> Tuple[str, str]:
-    numbers = sorted(
-        [int(m.title.split(" ")[-1]) for m in existing if m.title.startswith("Registrazione n.") and m.title.split(" ")[-1].isdigit()]
-    )
+    # Extract all numbers from existing "Registrazione n.X" titles
+    used_numbers = set()
+    for m in existing:
+        if m.title.startswith("Registrazione n."):
+            try:
+                # Extract the number after "n."
+                parts = m.title.split("n.")
+                if len(parts) > 1:
+                    num_str = parts[1].strip().split()[0]  # Get first word after "n."
+                    if num_str.isdigit():
+                        used_numbers.add(int(num_str))
+            except Exception:
+                continue
+    
+    # Find the smallest available number starting from 1
     n = 1
-    for num in numbers:
-        if num == n:
-            n += 1
-        elif num > n:
-            break
+    while n in used_numbers:
+        n += 1
+    
     rec_id = f"rec-{int(time.time()*1000)}"
     return rec_id, f"Registrazione n.{n}"
-

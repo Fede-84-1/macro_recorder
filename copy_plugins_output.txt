@@ -1,0 +1,6 @@
+COPIED_FROM: C:\Users\Administrator\Desktop\macro_recorder\.venv\Lib\site-packages\PySide6\plugins\platforms
+DST_LIST:
+qdirect2d.dll
+qminimal.dll
+qoffscreen.dll
+qwindows.dll

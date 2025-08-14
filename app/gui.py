@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .models import Macro
 from .player import Player
 from .recorder import Recorder
-from .storage import load_macros, save_macros, next_recording_title
+from .storage import load_macros, save_macros, next_recording_title, load_settings, save_settings
 
 
 class RecordingStopButton(QtWidgets.QPushButton):
@@ -61,7 +61,22 @@ class MacroTableModel(QtCore.QAbstractTableModel):
 
     def __init__(self, items: List[Macro]) -> None:
         super().__init__()
-        self.items = items
+        self._original_items = items
+        self.items = self._sort_items(items)
+
+    def _sort_items(self, items: List[Macro]) -> List[Macro]:
+        # Sort with favorites first, then by title
+        favorites = [m for m in items if m.favorite]
+        non_favorites = [m for m in items if not m.favorite]
+        # Sort each group by title
+        favorites.sort(key=lambda m: m.title.lower())
+        non_favorites.sort(key=lambda m: m.title.lower())
+        return favorites + non_favorites
+
+    def refresh_sorting(self):
+        self.beginResetModel()
+        self.items = self._sort_items(self._original_items)
+        self.endResetModel()
 
     def rowCount(self, parent=None):
         return len(self.items)
@@ -86,6 +101,10 @@ class MacroTableModel(QtCore.QAbstractTableModel):
         if role == QtCore.Qt.TextAlignmentRole:
             if col in (1, 2, 3):
                 return QtCore.Qt.AlignCenter
+        if role == QtCore.Qt.BackgroundRole:
+            # Highlight favorite rows with a subtle background
+            if macro.favorite:
+                return QtGui.QColor(255, 248, 220)  # Light yellow for light theme
         return None
 
     def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):
@@ -125,6 +144,11 @@ class SaveRecordingDialog(QtWidgets.QDialog):
         self.with_pauses = True
 
         layout = QtWidgets.QVBoxLayout(self)
+        
+        # Title input with label
+        title_label = QtWidgets.QLabel("Titolo (lascia vuoto per usare il titolo automatico):")
+        layout.addWidget(title_label)
+        
         self.ed_title = QtWidgets.QLineEdit()
         self.ed_title.setPlaceholderText(default_title)
         layout.addWidget(self.ed_title)
@@ -162,6 +186,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.player = Player()
         self.macros: List[Macro] = load_macros()
         self.stopOverlay = RecordingStopButton(self._stop_by_overlay)
+        self.settings = load_settings()
+        self.current_theme = self.settings.get("ui", {}).get("theme", "light")
 
         # UI
         self.table_model = MacroTableModel(self.macros)
@@ -172,6 +198,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QTableView.DoubleClicked | QtWidgets.QTableView.SelectedClicked | QtWidgets.QTableView.EditKeyPressed)
+        self.table.setAlternatingRowColors(True)
 
         toolbar = QtWidgets.QToolBar("Actions")
         self.addToolBar(toolbar)
@@ -196,6 +223,8 @@ class MainWindow(QtWidgets.QMainWindow):
         act_delete.triggered.connect(self.delete_selected)
         toolbar.addAction(act_delete)
 
+        toolbar.addSeparator()
+
         act_export = QtGui.QAction("Esporta JSON", self)
         act_export.triggered.connect(lambda: QtCore.QTimer.singleShot(0, self._do_export))
         toolbar.addAction(act_export)
@@ -203,6 +232,13 @@ class MainWindow(QtWidgets.QMainWindow):
         act_import = QtGui.QAction("Importa JSON", self)
         act_import.triggered.connect(lambda: QtCore.QTimer.singleShot(0, self._do_import))
         toolbar.addAction(act_import)
+
+        toolbar.addSeparator()
+
+        # Theme toggle action
+        self.act_theme = QtGui.QAction("Tema: Chiaro", self)
+        self.act_theme.triggered.connect(self.toggle_theme)
+        toolbar.addAction(self.act_theme)
 
         act_help = QtGui.QAction("Aiuto", self)
         act_help.triggered.connect(self.show_help)
@@ -226,6 +262,96 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.playbackFinished.connect(self._restore_window)
 
+        # Apply initial theme
+        self._apply_theme(self.current_theme)
+
+    def _apply_theme(self, theme: str):
+        if theme == "dark":
+            # Dark theme stylesheet
+            dark_style = """
+            QMainWindow {
+                background-color: #2b2b2b;
+                color: #f0f0f0;
+            }
+            QToolBar {
+                background-color: #3c3c3c;
+                border: none;
+                spacing: 3px;
+            }
+            QToolBar::separator {
+                background-color: #555;
+                width: 1px;
+                margin: 3px;
+            }
+            QTableView {
+                background-color: #2b2b2b;
+                alternate-background-color: #323232;
+                color: #f0f0f0;
+                gridline-color: #555;
+                selection-background-color: #4a6ea8;
+                selection-color: #ffffff;
+            }
+            QTableView::item:selected {
+                background-color: #4a6ea8;
+            }
+            QHeaderView::section {
+                background-color: #3c3c3c;
+                color: #f0f0f0;
+                padding: 5px;
+                border: 1px solid #555;
+            }
+            QPushButton {
+                background-color: #3c3c3c;
+                color: #f0f0f0;
+                border: 1px solid #555;
+                padding: 5px 10px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+            }
+            QPushButton:pressed {
+                background-color: #555;
+            }
+            QLineEdit {
+                background-color: #3c3c3c;
+                color: #f0f0f0;
+                border: 1px solid #555;
+                padding: 3px;
+                border-radius: 3px;
+            }
+            QStatusBar {
+                background-color: #3c3c3c;
+                color: #f0f0f0;
+            }
+            QMessageBox {
+                background-color: #2b2b2b;
+                color: #f0f0f0;
+            }
+            """
+            self.setStyleSheet(dark_style)
+            self.act_theme.setText("Tema: Scuro")
+            # Update table model for dark theme favorite highlighting
+            self.table_model.beginResetModel()
+            self.table_model.endResetModel()
+        else:
+            # Light theme (default)
+            self.setStyleSheet("")
+            self.act_theme.setText("Tema: Chiaro")
+            # Reset table model for light theme
+            self.table_model.beginResetModel()
+            self.table_model.endResetModel()
+
+    def toggle_theme(self):
+        self.current_theme = "dark" if self.current_theme == "light" else "light"
+        self._apply_theme(self.current_theme)
+        # Save theme preference
+        if "ui" not in self.settings:
+            self.settings["ui"] = {}
+        self.settings["ui"]["theme"] = self.current_theme
+        save_settings(self.settings)
+        self.statusBar().showMessage(f"Tema cambiato in {self.current_theme}", 2000)
+
     def _selected_index(self) -> int:
         indexes = self.table.selectionModel().selectedRows()
         return indexes[0].row() if indexes else -1
@@ -236,7 +362,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def toggle_recording(self) -> None:
         if not self.recorder.is_recording:
-            self.statusBar().showMessage("Registrazione in corso… Premere ESC o cliccare Stop per terminare (tasto destro per trascinare)")
+            self.statusBar().showMessage("Registrazione in corso… Cliccare Stop per terminare (tasto destro per trascinare)")
             self.recordingStateChanged.emit(True)
             self.stopOverlay.show_bottom_right()
             self.hide()
@@ -253,7 +379,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     m = Macro(id=rec_id, title=dlg.title, events=events, with_pauses=dlg.with_pauses, repetitions=1)
                     self.macros.append(m)
                     save_macros(self.macros)
-                    self.table_model.layoutChanged.emit()
+                    self.table_model._original_items = self.macros
+                    self.table_model.refresh_sorting()
                     self.statusBar().showMessage(f"Salvata {m.title}")
             else:
                 self.statusBar().showMessage("Nessun evento registrato")
@@ -262,7 +389,7 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = self._selected_index()
         if idx < 0:
             return
-        m = self.macros[idx]
+        m = self.table_model.items[idx]
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Esporta macro", f"{m.title}.json", "JSON (*.json)")
         if not path:
             return
@@ -280,13 +407,14 @@ class MainWindow(QtWidgets.QMainWindow):
         m = Macro.from_dict(d)
         self.macros.append(m)
         save_macros(self.macros)
-        self.table_model.layoutChanged.emit()
+        self.table_model._original_items = self.macros
+        self.table_model.refresh_sorting()
 
     def execute_selected(self) -> None:
         idx = self._selected_index()
         if idx < 0:
             return
-        m = self.macros[idx]
+        m = self.table_model.items[idx]
         self.hide()
         self._play_macro_with_restore(m)
 
@@ -326,7 +454,7 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = self._selected_index()
         if idx < 0:
             return
-        m = self.macros[idx]
+        m = self.table_model.items[idx]
         m.with_pauses = not m.with_pauses
         save_macros(self.macros)
         self.table_model.dataChanged.emit(self.table_model.index(idx, 1), self.table_model.index(idx, 1))
@@ -335,25 +463,31 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = self._selected_index()
         if idx < 0:
             return
-        m = self.macros[idx]
+        m = self.table_model.items[idx]
         m.favorite = not m.favorite
         save_macros(self.macros)
-        self.table_model.dataChanged.emit(self.table_model.index(idx, 3), self.table_model.index(idx, 3))
+        # Refresh sorting to move favorites to top
+        self.table_model.refresh_sorting()
 
     def delete_selected(self) -> None:
         idx = self._selected_index()
         if idx < 0:
             return
-        del self.macros[idx]
+        macro_to_delete = self.table_model.items[idx]
+        # Remove from original list
+        self.macros.remove(macro_to_delete)
         save_macros(self.macros)
-        self.table_model.layoutChanged.emit()
+        self.table_model._original_items = self.macros
+        self.table_model.refresh_sorting()
 
     def show_help(self) -> None:
         text = (
             "<h3>Guida rapida</h3>"
             "<ul>"
-            "<li>Registra: usa la toolbar; durante la registrazione clic sinistro Stop per fermare, tasto destro per trascinare</li>"
-            "<li>Esegui: la finestra si nasconde, esegue e si riapre alla fine</li>"
+            "<li><b>Registra:</b> usa la toolbar; durante la registrazione clic sinistro Stop per fermare, tasto destro per trascinare</li>"
+            "<li><b>Esegui:</b> la finestra si nasconde, esegue e si riapre alla fine</li>"
+            "<li><b>Preferiti:</b> marca le macro come preferite per tenerle in cima alla lista</li>"
+            "<li><b>Tema:</b> passa dal tema chiaro a quello scuro dal pulsante nella toolbar</li>"
             "</ul>"
         )
         QtWidgets.QMessageBox.information(self, "Aiuto", text)
