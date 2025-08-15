@@ -1,10 +1,28 @@
-PySide6>=6.8,<6.10
+# AutoKey - Macro Recorder Dependencies
+# AGGIORNAMENTO: Versioni ottimizzate per massima compatibilità e stabilità
+
+# GUI Framework - PySide6 con versioni stabili testate
+PySide6>=6.8.0,<6.10.0
+
+# Input/Output Libraries - Versioni testate per Windows
 keyboard==0.13.5
 mouse==0.7.1
+
+# System Integration
 platformdirs==4.2.2
-loguru==0.7.2
 psutil==6.0.0
-pyinstaller>=6.10,<6.16
+
+# Logging
+loguru==0.7.2
+
+# Build Tools - PyInstaller con versioni compatibili
+pyinstaller>=6.10.0,<6.16.0
+
+# Automation Libraries - Fallback per compatibilità
 pyautogui==0.9.54
 pydirectinput==1.0.4
 
+# Development Dependencies (opzionali, per sviluppo)
+# pytest>=7.0.0
+# black>=22.0.0
+# mypy>=1.0.0
