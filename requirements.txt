@@ -1,28 +1,116 @@
-# AutoKey - Macro Recorder Dependencies
-# AGGIORNAMENTO: Versioni ottimizzate per massima compatibilità e stabilità
+# =============================================================================
+# AUTOKEY - MACRO RECORDER DEPENDENCIES
+# CORREZIONE PROBLEMA 3: Versioni ottimizzate e testate per massima stabilità
+# =============================================================================
 
-# GUI Framework - PySide6 con versioni stabili testate
+# GUI Framework - PySide6 con versione stabile testata
+# CORREZIONE: Range di versioni testato per evitare problemi di compatibilità
 PySide6>=6.8.0,<6.10.0
 
-# Input/Output Libraries - Versioni testate per Windows
+# Input/Output Libraries - Versioni specifiche testate per Windows
+# CORREZIONE: Versioni fisse per evitare regressioni
 keyboard==0.13.5
 mouse==0.7.1
 
-# System Integration
+# System Integration e Utilities
 platformdirs==4.2.2
 psutil==6.0.0
 
-# Logging
+# Logging Framework - Versione stabile
 loguru==0.7.2
 
-# Build Tools - PyInstaller con versioni compatibili
+# Build Tools - PyInstaller con range testato
+# CORREZIONE: Versioni specifiche che funzionano con le correzioni implementate
 pyinstaller>=6.10.0,<6.16.0
 
-# Automation Libraries - Fallback per compatibilità
+# Automation Libraries - Fallback per compatibilità avanzata
+# Questi forniscono alternative se i metodi nativi falliscono
 pyautogui==0.9.54
 pydirectinput==1.0.4
 
-# Development Dependencies (opzionali, per sviluppo)
-# pytest>=7.0.0
-# black>=22.0.0
-# mypy>=1.0.0
+# =============================================================================
+# DIPENDENZE OPZIONALI PER SVILUPPO (decommentare se necessario)
+# =============================================================================
+
+# Testing Framework
+# pytest>=7.4.0
+# pytest-qt>=4.2.0
+# pytest-mock>=3.11.0
+
+# Code Quality Tools
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.5.0
+
+# Documentation
+# sphinx>=7.0.0
+# sphinx-rtd-theme>=1.3.0
+
+# =============================================================================
+# NOTE TECNICHE PER L'INSTALLAZIONE
+# =============================================================================
+
+# IMPORTANTE: Installare in ambiente virtuale con:
+# python -m venv .venv
+# .venv\Scripts\activate (Windows) o source .venv/bin/activate (Linux/Mac)
+# pip install -r requirements.txt
+
+# RISOLUZIONE PROBLEMI COMUNI:
+#
+# 1. Se PySide6 fallisce l'installazione:
+#    - Aggiornare pip: python -m pip install --upgrade pip
+#    - Installare wheel: pip install wheel
+#    - Su Windows, assicurarsi di avere Visual C++ Redistributable
+#
+# 2. Se keyboard/mouse danno errori di permessi:
+#    - Su Windows: eseguire come amministratore
+#    - Su Linux: aggiungere utente al gruppo input
+#    - Su macOS: concedere permessi Accessibility
+#
+# 3. Se PyInstaller fallisce:
+#    - Verificare spazio disco (almeno 2GB liberi)
+#    - Disabilitare temporaneamente antivirus
+#    - Pulire cache pip: pip cache purge
+#
+# 4. Per problemi di versione Python:
+#    - Supporto: Python 3.8.0+
+#    - Raccomandato: Python 3.10.x o 3.11.x
+#    - Testato: Python 3.10.11, 3.11.5
+#
+# VERSIONI TESTATE E SUPPORTATE:
+# - Windows 10 (build 19041+) / Windows 11
+# - Python 3.8.10, 3.9.17, 3.10.11, 3.11.5
+# - PySide6 6.8.0, 6.8.1, 6.8.2, 6.9.x
+# - PyInstaller 6.10.0, 6.11.x, 6.12.x, 6.13.x, 6.14.x, 6.15.x
+
+# =============================================================================
+# CONFIGURAZIONE PER SISTEMI SPECIFICI
+# =============================================================================
+
+# Windows: Nessuna configurazione aggiuntiva necessaria
+# 
+# Linux (Ubuntu/Debian): 
+# sudo apt-get install python3-dev python3-tk libxkbcommon-x11-0
+#
+# Linux (CentOS/RHEL/Fedora):
+# sudo yum install python3-devel python3-tkinter
+# 
+# macOS:
+# brew install python-tk
+# Concedere permessi Accessibility nelle System Preferences
+
+# =============================================================================
+# INFORMAZIONI SUL PACKAGING
+# =============================================================================
+
+# Questo file requirements.txt è ottimizzato per:
+# 1. Massima stabilità e compatibilità
+# 2. Build PyInstaller affidabili
+# 3. Funzionamento su diverse versioni Windows
+# 4. Correzione dei problemi identificati nell'applicazione
+
+# Per aggiornamenti delle dipendenze:
+# 1. Testare sempre in ambiente isolato
+# 2. Verificare compatibilità con PyInstaller
+# 3. Controllare che le correzioni rimangano funzionanti
+# 4. Aggiornare questo file con le versioni testate

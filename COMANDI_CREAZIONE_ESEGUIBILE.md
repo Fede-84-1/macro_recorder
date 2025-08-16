@@ -1,294 +1,283 @@
-# =============================================================================
-# AUTOKEY - COMANDI DI BUILD CORRETTI
-# CORREZIONE PROBLEMA 4: Script di build migliorato per risolvere tutti gli errori
-# =============================================================================
-
 # IMPORTANTE: Eseguire tutti i comandi in PowerShell come Amministratore
 # dalla directory C:\Users\Administrator\Desktop\macro_recorder
 
-Write-Host "=== AUTOKEY - PROCEDURA DI BUILD COMPLETA ===" -ForegroundColor Cyan
+Write-Host "=== AUTOKEY - PROCEDURA DI BUILD POTENZIATA ===" -ForegroundColor Cyan
+Write-Host "Correzioni implementate per tutti i problemi identificati" -ForegroundColor Green
 
-# STEP 1: VERIFICA PREREQUISITI
-Write-Host "`n--- STEP 1: Verifica prerequisiti ---" -ForegroundColor Yellow
+# STEP 1: VERIFICA PREREQUISITI AVANZATA
+Write-Host "`n--- STEP 1: Verifica prerequisiti avanzata ---" -ForegroundColor Yellow
 
-# Verifica Python (deve essere 3.10+ 64-bit)
+# Verifica Python con controllo versione dettagliato
 Write-Host "Verifica versione Python..." -ForegroundColor Gray
-python --version
+$pythonVersion = python --version 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ ERRORE: Python non trovato o non nel PATH!" -ForegroundColor Red
-    Write-Host "   Installare Python 3.10+ 64-bit da python.org" -ForegroundColor Red
+    Write-Host "❌ ERRORE: Python non trovato nel PATH!" -ForegroundColor Red
+    Write-Host "   Installare Python 3.8+ 64-bit da python.org" -ForegroundColor Red
+    Write-Host "   Assicurarsi di selezionare 'Add to PATH' durante l'installazione" -ForegroundColor Red
     exit 1
+}
+
+Write-Host "✓ Python trovato: $pythonVersion" -ForegroundColor Green
+
+# Verifica architettura Python (deve essere 64-bit)
+$pythonArch = python -c "import platform; print(platform.architecture()[0])" 2>$null
+if ($pythonArch -ne "64bit") {
+    Write-Host "⚠️  ATTENZIONE: Python $pythonArch rilevato. Raccomandato 64-bit per PyInstaller" -ForegroundColor Orange
 }
 
 # Verifica directory corrente
 $currentDir = Get-Location
 Write-Host "Directory corrente: $currentDir" -ForegroundColor Gray
-if (-not (Test-Path "app\main.py")) {
-    Write-Host "❌ ERRORE: Directory errata! Spostarsi in C:\Users\Administrator\Desktop\macro_recorder" -ForegroundColor Red
+
+# Verifica struttura progetto
+$requiredFiles = @("app\main.py", "requirements.txt", "copy_plugins.py")
+$missingFiles = @()
+
+foreach ($file in $requiredFiles) {
+    if (-not (Test-Path $file)) {
+        $missingFiles += $file
+    }
+}
+
+if ($missingFiles.Count -gt 0) {
+    Write-Host "❌ ERRORE: File di progetto mancanti!" -ForegroundColor Red
+    Write-Host "   File mancanti: $($missingFiles -join ', ')" -ForegroundColor Red
+    Write-Host "   Spostarsi nella directory root del progetto AutoKey" -ForegroundColor Red
     exit 1
 }
 
-# STEP 2: CONFIGURAZIONE AMBIENTE VIRTUALE
-Write-Host "`n--- STEP 2: Configurazione ambiente virtuale ---" -ForegroundColor Yellow
+Write-Host "✓ Struttura progetto verificata" -ForegroundColor Green
 
-# Rimuovi ambiente virtuale precedente se esiste
+# STEP 2: CONFIGURAZIONE AMBIENTE VIRTUALE MIGLIORATA
+Write-Host "`n--- STEP 2: Configurazione ambiente virtuale migliorata ---" -ForegroundColor Yellow
+
+# Backup dell'ambiente virtuale esistente se presente
 if (Test-Path ".venv") {
-    Write-Host "Rimozione ambiente virtuale precedente..." -ForegroundColor Gray
-    Remove-Item -Recurse -Force ".venv" -ErrorAction SilentlyContinue
+    Write-Host "Backup ambiente virtuale esistente..." -ForegroundColor Gray
+    if (Test-Path ".venv_backup") {
+        Remove-Item -Recurse -Force ".venv_backup" -ErrorAction SilentlyContinue
+    }
+    Rename-Item ".venv" ".venv_backup" -ErrorAction SilentlyContinue
+    Write-Host "✓ Backup creato: .venv_backup" -ForegroundColor Green
 }
 
 # Crea nuovo ambiente virtuale
 Write-Host "Creazione ambiente virtuale..." -ForegroundColor Gray
-python -m venv .venv
+python -m venv .venv --clear
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ ERRORE: Impossibile creare ambiente virtuale!" -ForegroundColor Red
+    Write-Host "❌ ERRORE: Creazione ambiente virtuale fallita!" -ForegroundColor Red
+    Write-Host "   Possibili cause:" -ForegroundColor Yellow
+    Write-Host "   1. Python non installato correttamente" -ForegroundColor Gray
+    Write-Host "   2. Permessi insufficienti" -ForegroundColor Gray
+    Write-Host "   3. Spazio disco insufficiente" -ForegroundColor Gray
     exit 1
 }
 
-# Configura policy di esecuzione se necessario
+# Configura policy di esecuzione con verifica
 Write-Host "Configurazione policy di esecuzione..." -ForegroundColor Gray
 try {
-    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-    Write-Host "✓ Policy di esecuzione configurata" -ForegroundColor Green
+    $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
+    Write-Host "Policy corrente: $currentPolicy" -ForegroundColor Gray
+    
+    if ($currentPolicy -eq "Restricted") {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+        Write-Host "✓ Policy aggiornata a RemoteSigned" -ForegroundColor Green
+    } else {
+        Write-Host "✓ Policy adeguata: $currentPolicy" -ForegroundColor Green
+    }
 } catch {
-    Write-Host "⚠️ Impossibile modificare policy di esecuzione" -ForegroundColor Orange
+    Write-Host "⚠️  Impossibile modificare policy: $($_.Exception.Message)" -ForegroundColor Orange
+    Write-Host "   Continuare comunque..." -ForegroundColor Orange
 }
 
-# Attiva ambiente virtuale
+# Attiva ambiente virtuale con verifica
 Write-Host "Attivazione ambiente virtuale..." -ForegroundColor Gray
 & ".\.venv\Scripts\Activate.ps1"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ ERRORE: Impossibile attivare ambiente virtuale!" -ForegroundColor Red
-    Write-Host "   Provare: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser" -ForegroundColor Red
+    Write-Host "❌ ERRORE: Attivazione ambiente virtuale fallita!" -ForegroundColor Red
+    Write-Host "   Provare manualmente:" -ForegroundColor Yellow
+    Write-Host "   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser" -ForegroundColor Gray
+    Write-Host "   .\.venv\Scripts\Activate.ps1" -ForegroundColor Gray
     exit 1
 }
 
-Write-Host "✓ Ambiente virtuale attivato con successo" -ForegroundColor Green
+# Verifica attivazione ambiente virtuale
+$virtualEnvPath = $env:VIRTUAL_ENV
+if ($virtualEnvPath) {
+    Write-Host "✓ Ambiente virtuale attivato: $virtualEnvPath" -ForegroundColor Green
+} else {
+    Write-Host "⚠️  Ambiente virtuale potrebbe non essere attivato correttamente" -ForegroundColor Orange
+}
 
-# STEP 3: INSTALLAZIONE DIPENDENZE
-Write-Host "`n--- STEP 3: Installazione dipendenze ---" -ForegroundColor Yellow
+# STEP 3: INSTALLAZIONE DIPENDENZE OTTIMIZZATA
+Write-Host "`n--- STEP 3: Installazione dipendenze ottimizzata ---" -ForegroundColor Yellow
 
-# Aggiorna pip
+# Aggiorna pip alla versione più recente
 Write-Host "Aggiornamento pip..." -ForegroundColor Gray
-python -m pip install --upgrade pip
+python -m pip install --upgrade pip wheel setuptools
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "⚠️ Errore aggiornamento pip, continuando..." -ForegroundColor Orange
+    Write-Host "⚠️  Aggiornamento pip parzialmente fallito, continuando..." -ForegroundColor Orange
+} else {
+    Write-Host "✓ Pip aggiornato con successo" -ForegroundColor Green
 }
 
-# Installa dipendenze
-Write-Host "Installazione dipendenze dal requirements.txt..." -ForegroundColor Gray
-pip install -r requirements.txt
+# Mostra versione pip aggiornata
+$pipVersion = python -m pip --version
+Write-Host "Versione pip: $pipVersion" -ForegroundColor Gray
+
+# CORREZIONE PROBLEMA 3: Installazione dipendenze con versioni specifiche testate
+Write-Host "Installazione dipendenze con versioni testate..." -ForegroundColor Gray
+
+# Installa dipendenze critiche singolarmente per debug migliore
+$criticalPackages = @(
+    "PySide6>=6.8.0,<6.10.0",
+    "keyboard==0.13.5",
+    "mouse==0.7.1",
+    "loguru==0.7.2",
+    "platformdirs==4.2.2",
+    "pyinstaller>=6.10.0,<6.16.0"
+)
+
+foreach ($package in $criticalPackages) {
+    Write-Host "  Installazione: $package" -ForegroundColor Gray
+    pip install $package
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ ERRORE: Installazione fallita per $package" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Installa dipendenze opzionali (fallimento non critico)
+Write-Host "Installazione dipendenze opzionali..." -ForegroundColor Gray
+$optionalPackages = @("pyautogui==0.9.54", "pydirectinput==1.0.4", "psutil==6.0.0")
+
+foreach ($package in $optionalPackages) {
+    Write-Host "  Installazione opzionale: $package" -ForegroundColor Gray
+    pip install $package
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "⚠️  Installazione opzionale fallita per $package (non critico)" -ForegroundColor Orange
+    }
+}
+
+# Verifica installazioni critiche
+Write-Host "Verifica installazioni critiche..." -ForegroundColor Gray
+$verificationCommands = @(
+    @("PySide6", "import PySide6; print('PySide6:', PySide6.__version__)"),
+    @("keyboard", "import keyboard; print('keyboard: OK')"),
+    @("mouse", "import mouse; print('mouse: OK')"),
+    @("PyInstaller", "import PyInstaller; print('PyInstaller:', PyInstaller.__version__)")
+)
+
+foreach ($cmd in $verificationCommands) {
+    $packageName = $cmd[0]
+    $testCommand = $cmd[1]
+    
+    $result = python -c $testCommand 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  ✓ $packageName: $result" -ForegroundColor Green
+    } else {
+        Write-Host "  ❌ $packageName: ERRORE" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# STEP 4: TEST APPLICAZIONE MIGLIORATO
+Write-Host "`n--- STEP 4: Test applicazione migliorato ---" -ForegroundColor Yellow
+
+Write-Host "Test importazione moduli AutoKey..." -ForegroundColor Gray
+$importTest = python -c "
+try:
+    from app.gui import MainWindow
+    from app.recorder import Recorder
+    from app.player import Player
+    print('✓ Import test superato')
+except Exception as e:
+    print(f'❌ Import test fallito: {e}')
+    exit(1)
+"
+
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ ERRORE: Installazione dipendenze fallita!" -ForegroundColor Red
+    Write-Host "❌ ERRORE: Test import moduli fallito!" -ForegroundColor Red
+    Write-Host "   Verificare la struttura del progetto" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "✓ Dipendenze installate con successo" -ForegroundColor Green
-
-# STEP 4: TEST APPLICAZIONE
-Write-Host "`n--- STEP 4: Test applicazione ---" -ForegroundColor Yellow
-
-Write-Host "Avvio test applicazione (si chiuderà automaticamente dopo 5 secondi)..." -ForegroundColor Gray
+Write-Host "Test avvio applicazione (3 secondi)..." -ForegroundColor Gray
 $testProcess = Start-Process python -ArgumentList "-m", "app.main" -NoNewWindow -PassThru
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 3
+
 if (-not $testProcess.HasExited) {
     $testProcess.Kill()
-}
-
-if ($testProcess.ExitCode -eq 0 -or $testProcess.HasExited) {
-    Write-Host "✓ Test applicazione superato" -ForegroundColor Green
+    Write-Host "✓ Test avvio applicazione superato" -ForegroundColor Green
 } else {
-    Write-Host "⚠️ Test applicazione con possibili problemi, continuando..." -ForegroundColor Orange
+    Write-Host "⚠️  Applicazione terminata rapidamente (possibile ma continuiamo)" -ForegroundColor Orange
 }
 
-# STEP 5: PULIZIA FILE PRECEDENTI
+# STEP 5: PULIZIA BUILD PRECEDENTI
 Write-Host "`n--- STEP 5: Pulizia build precedenti ---" -ForegroundColor Yellow
 
 Write-Host "Rimozione file di build precedenti..." -ForegroundColor Gray
-Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "dist" -ErrorAction SilentlyContinue
-Remove-Item "*.spec" -ErrorAction SilentlyContinue
+$cleanupItems = @("build", "dist", "*.spec", "__pycache__", "app\__pycache__")
+
+foreach ($item in $cleanupItems) {
+    if (Test-Path $item) {
+        Remove-Item -Recurse -Force $item -ErrorAction SilentlyContinue
+        Write-Host "  ✓ Rimosso: $item" -ForegroundColor Gray
+    }
+}
 
 Write-Host "✓ Pulizia completata" -ForegroundColor Green
 
-# STEP 6: VERIFICA ICONA
-Write-Host "`n--- STEP 6: Verifica icona ---" -ForegroundColor Yellow
+# STEP 6: VERIFICA ICONA CON FALLBACK
+Write-Host "`n--- STEP 6: Verifica icona con fallback ---" -ForegroundColor Yellow
 
-$iconPath = "C:\Users\Administrator\Desktop\Icona_Minimalista_AutoKey.ico"
-if (Test-Path $iconPath) {
-    Write-Host "✓ Icona trovata: $iconPath" -ForegroundColor Green
-} else {
-    Write-Host "⚠️ Icona non trovata: $iconPath" -ForegroundColor Orange
-    Write-Host "   Il build continuerà senza icona personalizzata" -ForegroundColor Orange
-    $iconPath = ""
-}
-
-# STEP 7: BUILD CON PYINSTALLER
-Write-Host "`n--- STEP 7: Build con PyInstaller ---" -ForegroundColor Yellow
-
-Write-Host "Inizio build eseguibile..." -ForegroundColor Gray
-
-# Comando PyInstaller corretto e completo
-$pyinstallerArgs = @(
-    "--onefile"
-    "--windowed"
-    "--name", "AutoKey"
-    "--add-data", "assets;assets"
-    "app\main.py"
+$iconPaths = @(
+    "C:\Users\Administrator\Desktop\Icona_Minimalista_AutoKey.ico",
+    "assets\icon.ico",
+    "icon.ico"
 )
 
-# Aggiungi icona solo se disponibile
-if ($iconPath -ne "") {
-    $pyinstallerArgs += "--icon", $iconPath
-}
-
-# Esegui PyInstaller
-Write-Host "Esecuzione PyInstaller con parametri:" -ForegroundColor Gray
-Write-Host "  " ($pyinstallerArgs -join " ") -ForegroundColor Gray
-
-& ".\.venv\Scripts\python.exe" -m PyInstaller @pyinstallerArgs
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ ERRORE: Build PyInstaller fallito!" -ForegroundColor Red
-    Write-Host "`nDiagnostica errori comuni:" -ForegroundColor Yellow
-    Write-Host "1. Controllare che tutte le dipendenze siano installate" -ForegroundColor Gray
-    Write-Host "2. Verificare permessi di scrittura nella directory" -ForegroundColor Gray
-    Write-Host "3. Controllare che l'antivirus non blocchi PyInstaller" -ForegroundColor Gray
-    exit 1
-}
-
-Write-Host "✓ Build PyInstaller completato" -ForegroundColor Green
-
-# STEP 8: COPIA PLUGIN QT (CRITICO)
-Write-Host "`n--- STEP 8: Copia plugin Qt ---" -ForegroundColor Yellow
-
-Write-Host "Esecuzione script copia plugin (versione migliorata)..." -ForegroundColor Gray
-python copy_plugins.py
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ ERRORE: Copia plugin fallita!" -ForegroundColor Red
-    Write-Host "`nPossibili soluzioni:" -ForegroundColor Yellow
-    Write-Host "1. Verificare che PySide6 sia installato: pip show PySide6" -ForegroundColor Gray
-    Write-Host "2. Controllare permessi directory dist/" -ForegroundColor Gray
-    Write-Host "3. Reinstallare PySide6: pip uninstall PySide6 && pip install PySide6" -ForegroundColor Gray
-    exit 1
-}
-
-Write-Host "✓ Plugin Qt copiati con successo" -ForegroundColor Green
-
-# STEP 9: VERIFICA BUILD
-Write-Host "`n--- STEP 9: Verifica build ---" -ForegroundColor Yellow
-
-$exePath = "dist\AutoKey.exe"
-if (Test-Path $exePath) {
-    $fileSize = (Get-Item $exePath).Length / 1MB
-    Write-Host "✓ AutoKey.exe creato con successo" -ForegroundColor Green
-    Write-Host "  Dimensione: $([math]::Round($fileSize, 1)) MB" -ForegroundColor Gray
-    Write-Host "  Percorso: $(Resolve-Path $exePath)" -ForegroundColor Gray
-} else {
-    Write-Host "❌ ERRORE: AutoKey.exe non trovato!" -ForegroundColor Red
-    exit 1
-}
-
-# Verifica plugin
-$pluginsPath = "dist\AutoKey\platforms"
-if (Test-Path $pluginsPath) {
-    $pluginCount = (Get-ChildItem $pluginsPath).Count
-    Write-Host "✓ Plugin Qt presenti: $pluginCount file" -ForegroundColor Green
-} else {
-    Write-Host "⚠️ Plugin Qt non trovati, potrebbero verificarsi errori di avvio" -ForegroundColor Orange
-}
-
-# STEP 10: TEST ESEGUIBILE
-Write-Host "`n--- STEP 10: Test eseguibile ---" -ForegroundColor Yellow
-
-Write-Host "Test avvio eseguibile (si chiuderà dopo 8 secondi)..." -ForegroundColor Gray
-try {
-    $testExeProcess = Start-Process $exePath -PassThru
-    Start-Sleep -Seconds 8
-    
-    if (-not $testExeProcess.HasExited) {
-        $testExeProcess.Kill()
-        Write-Host "✓ Eseguibile avviato correttamente" -ForegroundColor Green
-    } else {
-        Write-Host "⚠️ Eseguibile terminato prematuramente, controllare log" -ForegroundColor Orange
+$iconPath = ""
+foreach ($path in $iconPaths) {
+    if (Test-Path $path) {
+        $iconPath = $path
+        Write-Host "✓ Icona trovata: $iconPath" -ForegroundColor Green
+        break
     }
-} catch {
-    Write-Host "⚠️ Impossibile testare eseguibile: $_" -ForegroundColor Orange
 }
 
-# STEP 11: CREAZIONE RELEASE
-Write-Host "`n--- STEP 11: Creazione cartella release ---" -ForegroundColor Yellow
-
-$releasePath = "C:\Users\Administrator\Desktop\AutoKey_Release"
-Write-Host "Creazione cartella release: $releasePath" -ForegroundColor Gray
-
-# Crea directory release
-New-Item -ItemType Directory -Path $releasePath -Force | Out-Null
-
-# Copia eseguibile
-Copy-Item $exePath $releasePath -Force
-Write-Host "✓ AutoKey.exe copiato nella release" -ForegroundColor Green
-
-# Copia icona se disponibile
-if ($iconPath -ne "" -and (Test-Path $iconPath)) {
-    Copy-Item $iconPath $releasePath -Force
-    Write-Host "✓ Icona copiata nella release" -ForegroundColor Green
+if ($iconPath -eq "") {
+    Write-Host "⚠️  Nessuna icona trovata, continuo senza icona personalizzata" -ForegroundColor Orange
 }
 
-# Crea file README per la release
-$readmeContent = @"
-AUTOKEY - MACRO RECORDER
-========================
+# STEP 7: BUILD CON PYINSTALLER POTENZIATO
+Write-Host "`n--- STEP 7: Build con PyInstaller potenziato ---" -ForegroundColor Yellow
 
-Istruzioni per l'uso:
-1. Eseguire AutoKey.exe per avviare l'applicazione
-2. Cliccare "Registra" per iniziare a registrare macro
-3. Cliccare "Stop" per terminare la registrazione
-4. Usare "Esegui selezionata" per riprodurre le macro
+Write-Host "Preparazione parametri PyInstaller..." -ForegroundColor Gray
 
-Requisiti di sistema:
-- Windows 10/11 (64-bit)
-- Permessi amministratore per alcune funzioni avanzate
+# CORREZIONE PROBLEMA 3: Parametri PyInstaller ottimizzati
+$pyinstallerArgs = @(
+    "--onefile",
+    "--windowed",
+    "--name", "AutoKey",
+    "--add-data", "assets;assets",
+    "--hidden-import", "PySide6.QtCore",
+    "--hidden-import", "PySide6.QtGui", 
+    "--hidden-import", "PySide6.QtWidgets",
+    "--hidden-import", "keyboard",
+    "--hidden-import", "mouse",
+    "--hidden-import", "loguru",
+    "--collect-all", "PySide6",
+    "--noconfirm"
+)
 
-Risoluzione problemi:
-- Se l'applicazione non si avvia, controllare Windows Defender
-- Aggiungere eccezione antivirus per AutoKey.exe se necessario
-- Per supporto tecnico, controllare i log nella directory AppData
+# Aggiungi icona se disponibile
+if ($iconPath -ne "") {
+    $pyinstallerArgs += @("--icon", $iconPath)
+}
 
-Versione build: $(Get-Date -Format "yyyy-MM-dd HH:mm")
-"@
+# Aggiungi percorso principale
+$pyinstallerArgs += "app\main.py"
 
-$readmeContent | Out-File -FilePath "$releasePath\README.txt" -Encoding UTF8
-Write-Host "✓ README.txt creato nella release" -ForegroundColor Green
-
-# STEP 12: RIEPILOGO FINALE
-Write-Host "`n=== RIEPILOGO BUILD AUTOKEY ===" -ForegroundColor Cyan
-Write-Host "✅ Build completato con SUCCESSO!" -ForegroundColor Green
-Write-Host "`nFile generati:" -ForegroundColor White
-Write-Host "  📁 Eseguibile: $exePath" -ForegroundColor Gray
-Write-Host "  📁 Release: $releasePath" -ForegroundColor Gray
-Write-Host "  📄 README: $releasePath\README.txt" -ForegroundColor Gray
-
-Write-Host "`nComandi di test rapidi:" -ForegroundColor White
-Write-Host "  Test eseguibile: .\dist\AutoKey.exe" -ForegroundColor Gray
-Write-Host "  Apri release: explorer '$releasePath'" -ForegroundColor Gray
-
-Write-Host "`n🎉 AutoKey è pronto per l'uso!" -ForegroundColor Green
-
-# COMANDI RAPIDI PER RICOMPILAZIONI FUTURE
-Write-Host "`n=== COMANDI RAPIDI PER FUTURE RICOMPILAZIONI ===" -ForegroundColor Cyan
-Write-Host "Per ricompilazioni veloci (senza reinstallare dipendenze):" -ForegroundColor Yellow
-
-$quickRebuild = @'
-# REBUILD RAPIDO (solo dopo modifiche al codice)
-Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
-.\.venv\Scripts\Activate.ps1
-.\.venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name "AutoKey" --icon "C:\Users\Administrator\Desktop\Icona_Minimalista_AutoKey.ico" --add-data "assets;assets" app\main.py
-python copy_plugins.py
-Copy-Item "dist\AutoKey.exe" "C:\Users\Administrator\Desktop\AutoKey_Release\" -Force
-'@
-
-Write-Host $quickRebuild -ForegroundColor Gray
-
-Write-Host "`n✨ Build di AutoKey completato con successo! ✨" -ForegroundColor Magenta
+Write-Host "Parametri PyInstaller:" -ForegroundColor Gray
+Write-Host "
